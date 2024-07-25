@@ -10,6 +10,8 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"sort"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -67,6 +69,44 @@ func testLinkAddDel(t *testing.T, link Link) {
 		}
 	}
 
+	if resultPrimary, ok := result.(*Netkit); ok {
+		if inputPrimary, ok := link.(*Netkit); ok {
+			if resultPrimary.Policy != inputPrimary.Policy {
+				t.Fatalf("Policy is %d, should be %d", int(resultPrimary.Policy), int(inputPrimary.Policy))
+			}
+			if resultPrimary.PeerPolicy != inputPrimary.PeerPolicy {
+				t.Fatalf("Peer Policy is %d, should be %d", int(resultPrimary.PeerPolicy), int(inputPrimary.PeerPolicy))
+			}
+			if resultPrimary.Mode != inputPrimary.Mode {
+				t.Fatalf("Mode is %d, should be %d", int(resultPrimary.Mode), int(inputPrimary.Mode))
+			}
+
+			if inputPrimary.peerLinkAttrs.Name != "" {
+				var resultPeer *Netkit
+				pLink, err := LinkByName(inputPrimary.peerLinkAttrs.Name)
+				if err != nil {
+					t.Fatalf("Failed to get Peer netkit %s", inputPrimary.peerLinkAttrs.Name)
+				}
+				if resultPeer, ok = pLink.(*Netkit); !ok {
+					t.Fatalf("Peer %s is incorrect type", inputPrimary.peerLinkAttrs.Name)
+				}
+				if resultPrimary.PeerPolicy != resultPeer.Policy {
+					t.Fatalf("Peer Policy from primary is %d, should be %d", int(resultPrimary.PeerPolicy), int(resultPeer.Policy))
+				}
+				if resultPeer.PeerPolicy != resultPrimary.Policy {
+					t.Fatalf("PeerPolicy from peer is %d, should be %d", int(resultPeer.PeerPolicy), int(resultPrimary.Policy))
+				}
+				if resultPrimary.Mode != resultPeer.Mode {
+					t.Fatalf("Peer Mode from primary is %d, should be %d", int(resultPrimary.Mode), int(resultPeer.Mode))
+				}
+				if resultPrimary.IsPrimary() == resultPeer.IsPrimary() {
+					t.Fatalf("Both primary and peer device has the same value in IsPrimary() %t", resultPrimary.IsPrimary())
+				}
+			}
+		}
+
+	}
+
 	if veth, ok := result.(*Veth); ok {
 		if rBase.TxQLen != base.TxQLen {
 			t.Fatalf("qlen is %d, should be %d", rBase.TxQLen, base.TxQLen)
@@ -108,15 +148,19 @@ func testLinkAddDel(t *testing.T, link Link) {
 				}
 			}
 		}
-	} else {
-		// recent kernels set the parent index for veths in the response
-		if rBase.ParentIndex == 0 && base.ParentIndex != 0 {
-			t.Fatalf("Created link doesn't have parent %d but it should", base.ParentIndex)
-		} else if rBase.ParentIndex != 0 && base.ParentIndex == 0 {
-			t.Fatalf("Created link has parent %d but it shouldn't", rBase.ParentIndex)
-		} else if rBase.ParentIndex != 0 && base.ParentIndex != 0 {
-			if rBase.ParentIndex != base.ParentIndex {
-				t.Fatalf("Link.ParentIndex doesn't match %d != %d", rBase.ParentIndex, base.ParentIndex)
+	}
+
+	if _, ok := result.(*Veth); !ok {
+		if _, ok := result.(*Netkit); !ok {
+			// recent kernels set the parent index for veths/netkit in the response
+			if rBase.ParentIndex == 0 && base.ParentIndex != 0 {
+				t.Fatalf("Created link doesn't have parent %d but it should", base.ParentIndex)
+			} else if rBase.ParentIndex != 0 && base.ParentIndex == 0 {
+				t.Fatalf("Created link has parent %d but it shouldn't", rBase.ParentIndex)
+			} else if rBase.ParentIndex != 0 && base.ParentIndex != 0 {
+				if rBase.ParentIndex != base.ParentIndex {
+					t.Fatalf("Link.ParentIndex doesn't match %d != %d", rBase.ParentIndex, base.ParentIndex)
+				}
 			}
 		}
 	}
@@ -223,18 +267,25 @@ func testLinkAddDel(t *testing.T, link Link) {
 		}
 	}
 
-	if _, ok := link.(*Iptun); ok {
-		_, ok := result.(*Iptun)
+	if iptun, ok := link.(*Iptun); ok {
+		other, ok := result.(*Iptun)
 		if !ok {
 			t.Fatal("Result of create is not a iptun")
 		}
+		if iptun.FlowBased != other.FlowBased {
+			t.Fatal("Iptun.FlowBased doesn't match")
+		}
 	}
 
-	if _, ok := link.(*Ip6tnl); ok {
-		_, ok := result.(*Ip6tnl)
+	if ip6tnl, ok := link.(*Ip6tnl); ok {
+		other, ok := result.(*Ip6tnl)
 		if !ok {
 			t.Fatal("Result of create is not a ip6tnl")
 		}
+		if ip6tnl.FlowBased != other.FlowBased {
+			t.Fatal("Ip6tnl.FlowBased doesn't match")
+		}
+
 	}
 
 	if _, ok := link.(*Sittun); ok {
@@ -332,6 +383,14 @@ func compareGeneve(t *testing.T, expected, actual *Geneve) {
 
 	if !actual.Remote.Equal(expected.Remote) {
 		t.Fatalf("Geneve.Remote is not equal: %s!=%s", actual.Remote, expected.Remote)
+	}
+
+	if actual.FlowBased != expected.FlowBased {
+		t.Fatal("Geneve.FlowBased doesn't match")
+	}
+
+	if actual.InnerProtoInherit != expected.InnerProtoInherit {
+		t.Fatal("Geneve.InnerProtoInherit doesn't match")
 	}
 
 	// TODO: we should implement the rest of the geneve methods
@@ -654,6 +713,16 @@ func TestLinkAddDelGeneve(t *testing.T) {
 		Remote:    net.ParseIP("2001:db8:ef33::2")})
 }
 
+func TestLinkAddDelGeneveFlowBased(t *testing.T) {
+	tearDown := setUpNetlinkTest(t)
+	defer tearDown()
+
+	testLinkAddDel(t, &Geneve{
+		LinkAttrs: LinkAttrs{Name: "foo"},
+		Dport:     1234,
+		FlowBased: true})
+}
+
 func TestGeneveCompareToIP(t *testing.T) {
 	ns, tearDown := setUpNamedNetlinkTest(t)
 	defer tearDown()
@@ -845,6 +914,99 @@ func TestLinkAddDelMacvtap(t *testing.T) {
 	if err := LinkDel(parent); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestNetkitPeerNs(t *testing.T) {
+	minKernelRequired(t, 6, 7)
+	tearDown := setUpNetlinkTest(t)
+	defer tearDown()
+
+	basens, err := netns.Get()
+	if err != nil {
+		t.Fatal("Failed to get basens")
+	}
+	defer basens.Close()
+
+	nsOne, err := netns.New()
+	if err != nil {
+		t.Fatal("Failed to create nsOne")
+	}
+	defer nsOne.Close()
+
+	nsTwo, err := netns.New()
+	if err != nil {
+		t.Fatal("Failed to create nsTwo")
+	}
+	defer nsTwo.Close()
+
+	netkit := &Netkit{
+		LinkAttrs: LinkAttrs{
+			Name:      "foo",
+			Namespace: NsFd(basens),
+		},
+		Mode:       NETKIT_MODE_L2,
+		Policy:     NETKIT_POLICY_FORWARD,
+		PeerPolicy: NETKIT_POLICY_BLACKHOLE,
+	}
+	peerAttr := &LinkAttrs{
+		Name:      "bar",
+		Namespace: NsFd(nsOne),
+	}
+	netkit.SetPeerAttrs(peerAttr)
+
+	if err := LinkAdd(netkit); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = LinkByName("bar")
+	if err == nil {
+		t.Fatal("netkit link bar is in nsTwo")
+	}
+
+	_, err = LinkByName("foo")
+	if err == nil {
+		t.Fatal("netkit link foo is in nsTwo")
+	}
+
+	err = netns.Set(basens)
+	if err != nil {
+		t.Fatal("Failed to set basens")
+	}
+
+	_, err = LinkByName("foo")
+	if err != nil {
+		t.Fatal("netkit link foo is not in basens")
+	}
+
+	err = netns.Set(nsOne)
+	if err != nil {
+		t.Fatal("Failed to set nsOne")
+	}
+
+	_, err = LinkByName("bar")
+	if err != nil {
+		t.Fatal("netkit link bar is not in nsOne")
+	}
+}
+
+func TestLinkAddDelNetkit(t *testing.T) {
+	minKernelRequired(t, 6, 7)
+	tearDown := setUpNetlinkTest(t)
+	defer tearDown()
+
+	netkit := &Netkit{
+		LinkAttrs: LinkAttrs{
+			Name: "foo",
+		},
+		Mode:       NETKIT_MODE_L2,
+		Policy:     NETKIT_POLICY_FORWARD,
+		PeerPolicy: NETKIT_POLICY_BLACKHOLE,
+	}
+	peerAttr := &LinkAttrs{
+		Name: "bar",
+	}
+	netkit.SetPeerAttrs(peerAttr)
+	testLinkAddDel(t, netkit)
 }
 
 func TestLinkAddDelVeth(t *testing.T) {
@@ -1449,10 +1611,8 @@ func TestLinkAddDelVxlanFlowBased(t *testing.T) {
 }
 
 func TestLinkAddDelBareUDP(t *testing.T) {
-	if os.Getenv("CI") == "true" {
-		t.Skipf("Fails in CI due to operation not supported (missing kernel module?)")
-	}
-	minKernelRequired(t, 5, 8)
+	minKernelRequired(t, 5, 1)
+	setUpNetlinkTestWithKModule(t, "bareudp")
 	tearDown := setUpNetlinkTest(t)
 	defer tearDown()
 
@@ -1479,6 +1639,7 @@ func TestBareUDPCompareToIP(t *testing.T) {
 	}
 	// requires iproute2 >= 5.10
 	minKernelRequired(t, 5, 9)
+	setUpNetlinkTestWithKModule(t, "bareudp")
 	ns, tearDown := setUpNamedNetlinkTest(t)
 	defer tearDown()
 
@@ -1727,6 +1888,72 @@ func TestLinkSet(t *testing.T) {
 	if link.Attrs().Group != 42 {
 		t.Fatal("Link group not changed")
 	}
+}
+
+func TestLinkAltName(t *testing.T) {
+	tearDown := setUpNetlinkTest(t)
+	defer tearDown()
+
+	iface := &Dummy{LinkAttrs{Name: "bar"}}
+	if err := LinkAdd(iface); err != nil {
+		t.Fatal(err)
+	}
+
+	link, err := LinkByName("bar")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	altNames := []string{"altname", "altname2", "some_longer_altname"}
+	sort.Strings(altNames)
+	altNamesStr := strings.Join(altNames, ",")
+
+	for _, altname := range altNames {
+		err = LinkAddAltName(link, altname)
+		if err != nil {
+			t.Fatalf("Could not add %s: %v", altname, err)
+		}
+	}
+
+	link, err = LinkByName("bar")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sort.Strings(link.Attrs().AltNames)
+	linkAltNamesStr := strings.Join(link.Attrs().AltNames, ",")
+
+	if altNamesStr != linkAltNamesStr {
+		t.Fatalf("Expected %s AltNames, got %s", altNamesStr, linkAltNamesStr)
+	}
+
+	for _, altname := range altNames {
+		link, err = LinkByName(altname)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for idx, altName := range altNames {
+		err = LinkDelAltName(link, altName)
+		if err != nil {
+			t.Fatalf("Could not delete %s: %v", altName, err)
+		}
+
+		link, err = LinkByName("bar")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		sort.Strings(link.Attrs().AltNames)
+		linkAltNamesStr := strings.Join(link.Attrs().AltNames, ",")
+		altNamesStr := strings.Join(altNames[idx+1:], ",")
+
+		if linkAltNamesStr != altNamesStr {
+			t.Fatalf("Expected %s AltNames, got %s", altNamesStr, linkAltNamesStr)
+		}
+	}
+
 }
 
 func TestLinkSetARP(t *testing.T) {
@@ -2027,7 +2254,7 @@ func TestLinkXdp(t *testing.T) {
 	if err := LinkSetXdpFd(testXdpLink, fd); err != nil {
 		t.Fatal(err)
 	}
-	if err := LinkSetXdpFdWithFlags(testXdpLink, fd, nl.XDP_FLAGS_UPDATE_IF_NOEXIST); err != unix.EBUSY {
+	if err := LinkSetXdpFdWithFlags(testXdpLink, fd, nl.XDP_FLAGS_UPDATE_IF_NOEXIST); !errors.Is(err, unix.EBUSY) {
 		t.Fatal(err)
 	}
 	if err := LinkSetXdpFd(testXdpLink, -1); err != nil {
@@ -2047,6 +2274,17 @@ func TestLinkAddDelIptun(t *testing.T) {
 		Remote:    net.IPv4(127, 0, 0, 1)})
 }
 
+func TestLinkAddDelIptunFlowBased(t *testing.T) {
+	minKernelRequired(t, 4, 9)
+	tearDown := setUpNetlinkTest(t)
+	defer tearDown()
+
+	testLinkAddDel(t, &Iptun{
+		LinkAttrs: LinkAttrs{Name: "iptunflowfoo"},
+		FlowBased: true,
+	})
+}
+
 func TestLinkAddDelIp6tnl(t *testing.T) {
 	tearDown := setUpNetlinkTest(t)
 	defer tearDown()
@@ -2055,6 +2293,16 @@ func TestLinkAddDelIp6tnl(t *testing.T) {
 		LinkAttrs: LinkAttrs{Name: "ip6tnltest"},
 		Local:     net.ParseIP("2001:db8::100"),
 		Remote:    net.ParseIP("2001:db8::200"),
+	})
+}
+
+func TestLinkAddDelIp6tnlFlowbased(t *testing.T) {
+	tearDown := setUpNetlinkTest(t)
+	defer tearDown()
+
+	testLinkAddDel(t, &Ip6tnl{
+		LinkAttrs: LinkAttrs{Name: "ip6tnltest"},
+		FlowBased: true,
 	})
 }
 
@@ -2118,6 +2366,36 @@ func TestLinkSetGSOMaxSize(t *testing.T) {
 	}
 }
 
+func TestLinkSetGSOMaxSegs(t *testing.T) {
+	minKernelRequired(t, 5, 19)
+	tearDown := setUpNetlinkTest(t)
+	defer tearDown()
+
+	iface := &Veth{LinkAttrs: LinkAttrs{Name: "foo", TxQLen: testTxQLen, MTU: 1500}, PeerName: "bar"}
+	if err := LinkAdd(iface); err != nil {
+		t.Fatal(err)
+	}
+
+	link, err := LinkByName("foo")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = LinkSetGSOMaxSegs(link, 16)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	link, err = LinkByName("foo")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if link.Attrs().GSOMaxSegs != 16 {
+		t.Fatalf("GSO max segments was not modified")
+	}
+}
+
 func TestLinkSetGROMaxSize(t *testing.T) {
 	minKernelRequired(t, 5, 19)
 	tearDown := setUpNetlinkTest(t)
@@ -2144,6 +2422,86 @@ func TestLinkSetGROMaxSize(t *testing.T) {
 	}
 
 	if link.Attrs().GROMaxSize != 32768 {
+		t.Fatalf("GRO max size was not modified")
+	}
+}
+
+func TestLinkGetTSOMax(t *testing.T) {
+	minKernelRequired(t, 5, 19)
+	tearDown := setUpNetlinkTest(t)
+	defer tearDown()
+
+	iface := &Veth{LinkAttrs: LinkAttrs{Name: "foo", TxQLen: testTxQLen, MTU: 1500}, PeerName: "bar"}
+	if err := LinkAdd(iface); err != nil {
+		t.Fatal(err)
+	}
+
+	link, err := LinkByName("foo")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if link.Attrs().TSOMaxSize != 524280 || link.Attrs().TSOMaxSegs != 65535 {
+		t.Fatalf("TSO max size and segments could not be retrieved")
+	}
+}
+
+func TestLinkSetGSOIPv4MaxSize(t *testing.T) {
+	minKernelRequired(t, 6, 3)
+	tearDown := setUpNetlinkTest(t)
+	defer tearDown()
+
+	iface := &Veth{LinkAttrs: LinkAttrs{Name: "foo", TxQLen: testTxQLen, MTU: 1500}, PeerName: "bar"}
+	if err := LinkAdd(iface); err != nil {
+		t.Fatal(err)
+	}
+
+	link, err := LinkByName("foo")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = LinkSetGSOIPv4MaxSize(link, 32768)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	link, err = LinkByName("foo")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if link.Attrs().GSOIPv4MaxSize != 32768 {
+		t.Fatalf("GSO max size was not modified")
+	}
+}
+
+func TestLinkSetGROIPv4MaxSize(t *testing.T) {
+	minKernelRequired(t, 6, 3)
+	tearDown := setUpNetlinkTest(t)
+	defer tearDown()
+
+	iface := &Veth{LinkAttrs: LinkAttrs{Name: "foo", TxQLen: testTxQLen, MTU: 1500}, PeerName: "bar"}
+	if err := LinkAdd(iface); err != nil {
+		t.Fatal(err)
+	}
+
+	link, err := LinkByName("foo")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = LinkSetGROIPv4MaxSize(link, 32768)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	link, err = LinkByName("foo")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if link.Attrs().GROIPv4MaxSize != 32768 {
 		t.Fatalf("GRO max size was not modified")
 	}
 }
