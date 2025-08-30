@@ -17,8 +17,7 @@ import (
 )
 
 func TestRouteAddDel(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	// get loopback interface
 	link, err := LinkByName("lo")
@@ -155,8 +154,7 @@ func TestRouteAddDel(t *testing.T) {
 }
 
 func TestRoute6AddDel(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	// create dummy interface
 	// IPv6 route added to loopback interface will be unreachable
@@ -192,7 +190,7 @@ func TestRoute6AddDel(t *testing.T) {
 		IP:   net.ParseIP("2001:db8::0"),
 		Mask: net.CIDRMask(64, 128),
 	}
-	route := Route{LinkIndex: link.Attrs().Index, Dst: dst}
+	route := Route{LinkIndex: link.Attrs().Index, Dst: dst, Expires: 10}
 	if err := RouteAdd(&route); err != nil {
 		t.Fatal(err)
 	}
@@ -202,6 +200,25 @@ func TestRoute6AddDel(t *testing.T) {
 	}
 	if len(routes) != nroutes+1 {
 		t.Fatal("Route not added properly")
+	}
+
+	// route expiry is supported by kernel 4.4+
+	k, m, err := KernelVersion()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if k > 4 || (k == 4 && m > 4) {
+		foundExpires := false
+		for _, route := range routes {
+			if route.Dst.IP.Equal(dst.IP) {
+				if route.Expires > 0 && route.Expires <= 10 {
+					foundExpires = true
+				}
+			}
+		}
+		if !foundExpires {
+			t.Fatal("Route 'expires' not set")
+		}
 	}
 
 	dstIP := net.ParseIP("2001:db8::1")
@@ -332,8 +349,7 @@ func TestRoute6AddDel(t *testing.T) {
 }
 
 func TestRouteChange(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	// get loopback interface
 	link, err := LinkByName("lo")
@@ -398,8 +414,7 @@ func TestRouteChange(t *testing.T) {
 }
 
 func TestRouteReplace(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	// get loopback interface
 	link, err := LinkByName("lo")
@@ -459,8 +474,7 @@ func TestRouteReplace(t *testing.T) {
 }
 
 func TestRouteAppend(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	// get loopback interface
 	link, err := LinkByName("lo")
@@ -523,8 +537,7 @@ func TestRouteAppend(t *testing.T) {
 }
 
 func TestRouteAddIncomplete(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	// get loopback interface
 	link, err := LinkByName("lo")
@@ -562,8 +575,7 @@ func expectRouteUpdate(ch <-chan RouteUpdate, t, f uint16, dst net.IP) bool {
 }
 
 func TestRouteSubscribe(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	ch := make(chan RouteUpdate)
 	done := make(chan struct{})
@@ -607,8 +619,7 @@ func TestRouteSubscribe(t *testing.T) {
 }
 
 func TestRouteSubscribeWithOptions(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	ch := make(chan RouteUpdate)
 	done := make(chan struct{})
@@ -796,8 +807,7 @@ func TestRouteSubscribeListExisting(t *testing.T) {
 }
 
 func TestRouteFilterAllTables(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	// get loopback interface
 	link, err := LinkByName("lo")
@@ -877,8 +887,7 @@ func TestRouteFilterAllTables(t *testing.T) {
 }
 
 func TestRouteFilterByFamily(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	const table int = 999
 
@@ -950,8 +959,7 @@ func TestRouteFilterByFamily(t *testing.T) {
 }
 
 func TestRouteFilterIterCanStop(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	// get loopback interface
 	link, err := LinkByName("lo")
@@ -1016,8 +1024,7 @@ func TestRouteFilterIterCanStop(t *testing.T) {
 }
 
 func BenchmarkRouteListFilteredNew(b *testing.B) {
-	tearDown := setUpNetlinkTest(b)
-	defer tearDown()
+	b.Cleanup(setUpNetlinkTest(b))
 
 	link, err := setUpRoutesBench(b)
 
@@ -1039,8 +1046,7 @@ func BenchmarkRouteListFilteredNew(b *testing.B) {
 }
 
 func BenchmarkRouteListIter(b *testing.B) {
-	tearDown := setUpNetlinkTest(b)
-	defer tearDown()
+	b.Cleanup(setUpNetlinkTest(b))
 
 	link, err := setUpRoutesBench(b)
 
@@ -1104,8 +1110,7 @@ func tableIDIn(ids []int, id int) bool {
 }
 
 func TestRouteExtraFields(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	// get loopback interface
 	link, err := LinkByName("lo")
@@ -1180,8 +1185,7 @@ func TestRouteExtraFields(t *testing.T) {
 }
 
 func TestRouteMultiPath(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	// get loopback interface
 	link, err := LinkByName("lo")
@@ -1357,8 +1361,7 @@ func TestRouteIifOption(t *testing.T) {
 }
 
 func TestRouteOifOption(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	// setup two interfaces: eth0, eth1
 	err := LinkAdd(&Dummy{LinkAttrs{Name: "eth0"}})
@@ -1467,8 +1470,7 @@ func TestRouteOifOption(t *testing.T) {
 }
 
 func TestFilterDefaultRoute(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	// get loopback interface
 	link, err := LinkByName("lo")
@@ -1549,8 +1551,7 @@ func TestFilterDefaultRoute(t *testing.T) {
 }
 
 func TestMPLSRouteAddDel(t *testing.T) {
-	tearDown := setUpMPLSNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpMPLSNetlinkTest(t))
 
 	// get loopback interface
 	link, err := LinkByName("lo")
@@ -1601,8 +1602,7 @@ func TestIP6tnlRouteAddDel(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	// get loopback interface
 	link, err := LinkByName("lo")
@@ -1921,6 +1921,9 @@ func TestSEG6LocalEqual(t *testing.T) {
 	var flags_end_dt6 [nl.SEG6_LOCAL_MAX]bool
 	flags_end_dt6[nl.SEG6_LOCAL_ACTION] = true
 	flags_end_dt6[nl.SEG6_LOCAL_TABLE] = true
+	var flags_end_dt46 [nl.SEG6_LOCAL_MAX]bool
+	flags_end_dt46[nl.SEG6_LOCAL_ACTION] = true
+	flags_end_dt46[nl.SEG6_LOCAL_VRFTABLE] = true
 	var flags_end_dt4 [nl.SEG6_LOCAL_MAX]bool
 	flags_end_dt4[nl.SEG6_LOCAL_ACTION] = true
 	flags_end_dt4[nl.SEG6_LOCAL_TABLE] = true
@@ -1975,6 +1978,11 @@ func TestSEG6LocalEqual(t *testing.T) {
 			Table:  40,
 		},
 		{
+			Flags:    flags_end_dt46,
+			Action:   nl.SEG6_LOCAL_ACTION_END_DT46,
+			VrfTable: 50,
+		},
+		{
 			Flags:    flags_end_b6,
 			Action:   nl.SEG6_LOCAL_ACTION_END_B6,
 			Segments: segs,
@@ -2013,8 +2021,7 @@ func TestSEG6RouteAddDel(t *testing.T) {
 	}
 	// add/del routes with LWTUNNEL_SEG6 to/from loopback interface.
 	// Test both seg6 modes: encap (IPv4) & inline (IPv6).
-	tearDown := setUpSEG6NetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpSEG6NetlinkTest(t))
 
 	// get loopback interface and bring it up
 	link, err := LinkByName("lo")
@@ -2099,8 +2106,7 @@ func TestSEG6RouteAddDel(t *testing.T) {
 // add/del routes with LWTUNNEL_ENCAP_SEG6_LOCAL to/from dummy interface.
 func TestSEG6LocalRoute6AddDel(t *testing.T) {
 	minKernelRequired(t, 4, 14)
-	tearDown := setUpSEG6NetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpSEG6NetlinkTest(t))
 
 	// create dummy interface
 	// IPv6 route added to loopback interface will be unreachable
@@ -2230,8 +2236,7 @@ func TestMTURouteAddDel(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	// get loopback interface
 	link, err := LinkByName("lo")
@@ -2284,8 +2289,7 @@ func TestMTULockRouteAddDel(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	// get loopback interface
 	link, err := LinkByName("lo")
@@ -2342,8 +2346,7 @@ func TestRtoMinLockRouteAddDel(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	// get loopback interface
 	link, err := LinkByName("lo")
@@ -2396,8 +2399,7 @@ func TestRtoMinLockRouteAddDel(t *testing.T) {
 
 func TestRouteViaAddDel(t *testing.T) {
 	minKernelRequired(t, 5, 4)
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	_, err := RouteList(nil, FAMILY_V4)
 	if err != nil {
@@ -2461,8 +2463,7 @@ func TestRouteViaAddDel(t *testing.T) {
 }
 
 func TestRouteUIDOption(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	// setup eth0 so that network is reachable
 	err := LinkAdd(&Dummy{LinkAttrs{Name: "eth0"}})
@@ -2557,8 +2558,7 @@ func TestRouteUIDOption(t *testing.T) {
 }
 
 func TestRouteFWMarkOption(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	// setup eth0 so that network is reachable
 	err := LinkAdd(&Dummy{LinkAttrs{Name: "eth0"}})
@@ -2702,8 +2702,7 @@ func TestRouteFWMarkOption(t *testing.T) {
 }
 
 func TestRouteGetFIBMatchOption(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	err := LinkAdd(&Dummy{LinkAttrs{Name: "eth0"}})
 	if err != nil {

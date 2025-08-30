@@ -58,6 +58,8 @@ func (errDumpInterrupted) Error() string {
 	return "results may be incomplete or inconsistent"
 }
 
+func (errDumpInterrupted) Temporary() bool { return true }
+
 // Before errDumpInterrupted was introduced, EINTR was returned when a netlink
 // response had NLM_F_DUMP_INTR. Retain backward compatibility with code that
 // may be checking for EINTR using Is.
@@ -827,8 +829,8 @@ func SubscribeAt(newNs, curNs netns.NsHandle, protocol int, groups ...uint) (*Ne
 	return Subscribe(protocol, groups...)
 }
 
-func (s *NetlinkSocket) Close() {
-	s.file.Close()
+func (s *NetlinkSocket) Close() error {
+	return s.file.Close()
 }
 
 func (s *NetlinkSocket) GetFd() int {
@@ -1081,8 +1083,9 @@ type SocketHandle struct {
 }
 
 // Close closes the netlink socket
-func (sh *SocketHandle) Close() {
+func (sh *SocketHandle) Close() error {
 	if sh.Socket != nil {
-		sh.Socket.Close()
+		return sh.Socket.Close()
 	}
+	return nil
 }

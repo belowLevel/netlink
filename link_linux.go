@@ -1933,7 +1933,7 @@ func LinkByName(name string) (Link, error) {
 // filtering a dump of all link names. In this case, if the returned error is
 // [ErrDumpInterrupted] the result may be missing or outdated.
 func (h *Handle) LinkByName(name string) (Link, error) {
-	if h.lookupByDump {
+	if h.options.lookupByDump {
 		return h.linkByNameDump(name)
 	}
 
@@ -1942,8 +1942,10 @@ func (h *Handle) LinkByName(name string) (Link, error) {
 	msg := nl.NewIfInfomsg(unix.AF_UNSPEC)
 	req.AddData(msg)
 
-	attr := nl.NewRtAttr(unix.IFLA_EXT_MASK, nl.Uint32Attr(nl.RTEXT_FILTER_VF))
-	req.AddData(attr)
+	if h.options.collectVFInfo {
+		attr := nl.NewRtAttr(unix.IFLA_EXT_MASK, nl.Uint32Attr(nl.RTEXT_FILTER_VF))
+		req.AddData(attr)
+	}
 
 	nameData := nl.NewRtAttr(unix.IFLA_IFNAME, nl.ZeroTerminated(name))
 	if len(name) > 15 {
@@ -1955,7 +1957,7 @@ func (h *Handle) LinkByName(name string) (Link, error) {
 	if err == unix.EINVAL {
 		// older kernels don't support looking up via IFLA_IFNAME
 		// so fall back to dumping all links
-		h.lookupByDump = true
+		h.options.lookupByDump = true
 		return h.linkByNameDump(name)
 	}
 
@@ -1979,7 +1981,7 @@ func LinkByAlias(alias string) (Link, error) {
 // filtering a dump of all link names. In this case, if the returned error is
 // [ErrDumpInterrupted] the result may be missing or outdated.
 func (h *Handle) LinkByAlias(alias string) (Link, error) {
-	if h.lookupByDump {
+	if h.options.lookupByDump {
 		return h.linkByAliasDump(alias)
 	}
 
@@ -1988,8 +1990,10 @@ func (h *Handle) LinkByAlias(alias string) (Link, error) {
 	msg := nl.NewIfInfomsg(unix.AF_UNSPEC)
 	req.AddData(msg)
 
-	attr := nl.NewRtAttr(unix.IFLA_EXT_MASK, nl.Uint32Attr(nl.RTEXT_FILTER_VF))
-	req.AddData(attr)
+	if h.options.collectVFInfo {
+		attr := nl.NewRtAttr(unix.IFLA_EXT_MASK, nl.Uint32Attr(nl.RTEXT_FILTER_VF))
+		req.AddData(attr)
+	}
 
 	nameData := nl.NewRtAttr(unix.IFLA_IFALIAS, nl.ZeroTerminated(alias))
 	req.AddData(nameData)
@@ -1998,7 +2002,7 @@ func (h *Handle) LinkByAlias(alias string) (Link, error) {
 	if err == unix.EINVAL {
 		// older kernels don't support looking up via IFLA_IFALIAS
 		// so fall back to dumping all links
-		h.lookupByDump = true
+		h.options.lookupByDump = true
 		return h.linkByAliasDump(alias)
 	}
 
@@ -2017,8 +2021,10 @@ func (h *Handle) LinkByIndex(index int) (Link, error) {
 	msg := nl.NewIfInfomsg(unix.AF_UNSPEC)
 	msg.Index = int32(index)
 	req.AddData(msg)
-	attr := nl.NewRtAttr(unix.IFLA_EXT_MASK, nl.Uint32Attr(nl.RTEXT_FILTER_VF))
-	req.AddData(attr)
+	if h.options.collectVFInfo {
+		attr := nl.NewRtAttr(unix.IFLA_EXT_MASK, nl.Uint32Attr(nl.RTEXT_FILTER_VF))
+		req.AddData(attr)
+	}
 
 	return execGetLink(req)
 }
@@ -2796,6 +2802,15 @@ func addNetkitAttrs(nk *Netkit, linkInfo *nl.RtAttr, flag int) error {
 	data.AddRtAttr(nl.IFLA_NETKIT_SCRUB, nl.Uint32Attr(uint32(nk.Scrub)))
 	data.AddRtAttr(nl.IFLA_NETKIT_PEER_SCRUB, nl.Uint32Attr(uint32(nk.PeerScrub)))
 
+	// Any headroom or tailroom set on the primary device attributes will result in
+	// the kernel carrying them over into the peer device attributes for us.
+	if nk.Headroom > 0 {
+		data.AddRtAttr(nl.IFLA_NETKIT_HEADROOM, nl.Uint16Attr(nk.Headroom))
+	}
+	if nk.Tailroom > 0 {
+		data.AddRtAttr(nl.IFLA_NETKIT_TAILROOM, nl.Uint16Attr(nk.Tailroom))
+	}
+
 	if (flag & unix.NLM_F_EXCL) == 0 {
 		// Modifying peer link attributes will not take effect
 		return nil
@@ -2864,6 +2879,10 @@ func parseNetkitData(link Link, data []syscall.NetlinkRouteAttr) {
 		case nl.IFLA_NETKIT_PEER_SCRUB:
 			netkit.supportsScrub = true
 			netkit.PeerScrub = NetkitScrub(native.Uint32(datum.Value[0:4]))
+		case nl.IFLA_NETKIT_HEADROOM:
+			netkit.Headroom = native.Uint16(datum.Value[0:2])
+		case nl.IFLA_NETKIT_TAILROOM:
+			netkit.Tailroom = native.Uint16(datum.Value[0:2])
 		}
 	}
 }

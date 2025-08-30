@@ -23,10 +23,12 @@ import (
 )
 
 const (
-	testTxQLen    int = 100
-	defaultTxQLen int = 1000
-	testTxQueues  int = 4
-	testRxQueues  int = 8
+	testTxQLen    int    = 100
+	defaultTxQLen int    = 1000
+	testTxQueues  int    = 4
+	testRxQueues  int    = 8
+	testHeadroom  uint16 = 32
+	testTailroom  uint16 = 64
 )
 
 func testLinkAddDel(t *testing.T, link Link) {
@@ -87,6 +89,12 @@ func testLinkAddDel(t *testing.T, link Link) {
 			if resultPrimary.SupportsScrub() && resultPrimary.PeerScrub != inputPrimary.PeerScrub {
 				t.Fatalf("Peer Scrub is %d, should be %d", int(resultPrimary.PeerScrub), int(inputPrimary.PeerScrub))
 			}
+			if resultPrimary.Headroom != inputPrimary.Headroom {
+				t.Fatalf("Headroom is %d, should be %d", resultPrimary.Headroom, inputPrimary.Headroom)
+			}
+			if resultPrimary.Tailroom != inputPrimary.Tailroom {
+				t.Fatalf("Tailroom is %d, should be %d", resultPrimary.Tailroom, inputPrimary.Tailroom)
+			}
 			if inputPrimary.Mode == NETKIT_MODE_L2 && inputPrimary.HardwareAddr != nil {
 				if inputPrimary.HardwareAddr.String() != resultPrimary.HardwareAddr.String() {
 					t.Fatalf("Hardware address is %s, should be %s", resultPrimary.HardwareAddr.String(), inputPrimary.HardwareAddr.String())
@@ -122,6 +130,12 @@ func testLinkAddDel(t *testing.T, link Link) {
 				}
 				if resultPrimary.Scrub != resultPeer.PeerScrub {
 					t.Fatalf("PeerScrub from peer is %d, should be %d", int(resultPeer.PeerScrub), int(resultPrimary.Scrub))
+				}
+				if resultPrimary.Headroom != resultPeer.Headroom {
+					t.Fatalf("Headroom from peer is %d, should be %d", resultPeer.Headroom, resultPeer.Headroom)
+				}
+				if resultPrimary.Tailroom != resultPeer.Tailroom {
+					t.Fatalf("Tailroom from peer is %d, should be %d", resultPeer.Tailroom, resultPeer.Tailroom)
 				}
 				if inputPrimary.Mode == NETKIT_MODE_L2 && inputPrimary.peerLinkAttrs.HardwareAddr != nil {
 					if inputPrimary.peerLinkAttrs.HardwareAddr.String() != resultPeer.HardwareAddr.String() {
@@ -708,29 +722,25 @@ func compareBareUDP(t *testing.T, expected, actual *BareUDP) {
 }
 
 func TestLinkAddDelWithIndex(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	testLinkAddDel(t, &Dummy{LinkAttrs{Index: 1000, Name: "foo"}})
 }
 
 func TestLinkAddDelDummy(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	testLinkAddDel(t, &Dummy{LinkAttrs{Name: "foo"}})
 }
 
 func TestLinkAddDelDummyWithGroup(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	testLinkAddDel(t, &Dummy{LinkAttrs{Name: "foo", Group: 42}})
 }
 
 func TestLinkModify(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	linkName := "foo"
 	originalMTU := 1500
@@ -760,22 +770,19 @@ func TestLinkModify(t *testing.T) {
 }
 
 func TestLinkAddDelIfb(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	testLinkAddDel(t, &Ifb{LinkAttrs{Name: "foo"}})
 }
 
 func TestLinkAddDelBridge(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	testLinkAddDel(t, &Bridge{LinkAttrs: LinkAttrs{Name: "foo", MTU: 1400}})
 }
 
 func TestLinkAddDelGeneve(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	testLinkAddDel(t, &Geneve{
 		LinkAttrs: LinkAttrs{Name: "foo4", EncapType: "geneve"},
@@ -789,8 +796,7 @@ func TestLinkAddDelGeneve(t *testing.T) {
 }
 
 func TestLinkAddDelGeneveFlowBased(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	testLinkAddDel(t, &Geneve{
 		LinkAttrs: LinkAttrs{Name: "foo"},
@@ -800,7 +806,7 @@ func TestLinkAddDelGeneveFlowBased(t *testing.T) {
 
 func TestGeneveCompareToIP(t *testing.T) {
 	ns, tearDown := setUpNamedNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(tearDown)
 
 	expected := &Geneve{
 		ID:     0x764332, // 23 bits
@@ -838,8 +844,7 @@ func TestGeneveCompareToIP(t *testing.T) {
 }
 
 func TestLinkAddDelGretap(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	testLinkAddDel(t, &Gretap{
 		LinkAttrs: LinkAttrs{Name: "foo4"},
@@ -858,8 +863,7 @@ func TestLinkAddDelGretap(t *testing.T) {
 }
 
 func TestLinkAddDelGretun(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	testLinkAddDel(t, &Gretun{
 		LinkAttrs: LinkAttrs{Name: "foo4"},
@@ -873,8 +877,7 @@ func TestLinkAddDelGretun(t *testing.T) {
 }
 
 func TestLinkAddDelGretunPointToMultiPoint(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	testLinkAddDel(t, &Gretun{
 		LinkAttrs: LinkAttrs{Name: "foo"},
@@ -892,8 +895,7 @@ func TestLinkAddDelGretunPointToMultiPoint(t *testing.T) {
 func TestLinkAddDelGretunFlowBased(t *testing.T) {
 	minKernelRequired(t, 4, 3)
 
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	testLinkAddDel(t, &Gretun{
 		LinkAttrs: LinkAttrs{Name: "foo"},
@@ -903,8 +905,7 @@ func TestLinkAddDelGretunFlowBased(t *testing.T) {
 func TestLinkAddDelGretapFlowBased(t *testing.T) {
 	minKernelRequired(t, 4, 3)
 
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	testLinkAddDel(t, &Gretap{
 		LinkAttrs: LinkAttrs{Name: "foo"},
@@ -912,8 +913,7 @@ func TestLinkAddDelGretapFlowBased(t *testing.T) {
 }
 
 func TestLinkAddDelVlan(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	parent := &Dummy{LinkAttrs{Name: "foo"}}
 	if err := LinkAdd(parent); err != nil {
@@ -935,8 +935,7 @@ func TestLinkAddDelVlan(t *testing.T) {
 }
 
 func TestLinkAddVlanWithQosMaps(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	parent := &Dummy{LinkAttrs{Name: "foo"}}
 	if err := LinkAdd(parent); err != nil {
@@ -984,8 +983,7 @@ func TestLinkAddVlanWithQosMaps(t *testing.T) {
 }
 
 func TestLinkAddVlanWithFlags(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	parent := &Dummy{LinkAttrs{Name: "foo"}}
 	if err := LinkAdd(parent); err != nil {
@@ -1034,8 +1032,7 @@ func TestLinkAddVlanWithFlags(t *testing.T) {
 }
 
 func TestLinkModifyVlanFlags(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	parent := &Dummy{LinkAttrs{Name: "foo"}}
 	if err := LinkAdd(parent); err != nil {
@@ -1093,8 +1090,7 @@ func TestLinkModifyVlanFlags(t *testing.T) {
 }
 
 func TestLinkAddDelMacvlan(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	parent := &Dummy{LinkAttrs{Name: "foo"}}
 	if err := LinkAdd(parent); err != nil {
@@ -1122,8 +1118,7 @@ func TestLinkAddDelMacvlan(t *testing.T) {
 }
 
 func TestLinkAddDelMacvtap(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	parent := &Dummy{LinkAttrs{Name: "foo"}}
 	if err := LinkAdd(parent); err != nil {
@@ -1159,8 +1154,7 @@ func TestLinkAddDelMacvtap(t *testing.T) {
 func TestLinkMacvBCQueueLen(t *testing.T) {
 	minKernelRequired(t, 5, 11)
 
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	parent := &Dummy{LinkAttrs{Name: "foo"}}
 	if err := LinkAdd(parent); err != nil {
@@ -1188,8 +1182,7 @@ func TestLinkMacvBCQueueLen(t *testing.T) {
 
 func TestNetkitPeerNs(t *testing.T) {
 	minKernelRequired(t, 6, 7)
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	basens, err := netns.Get()
 	if err != nil {
@@ -1261,8 +1254,7 @@ func TestNetkitPeerNs(t *testing.T) {
 
 func TestLinkAddDelNetkit(t *testing.T) {
 	minKernelRequired(t, 6, 7)
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	netkit := &Netkit{
 		LinkAttrs: LinkAttrs{
@@ -1283,9 +1275,84 @@ func TestLinkAddDelNetkit(t *testing.T) {
 	testLinkAddDel(t, netkit)
 }
 
-func TestLinkAddDelVeth(t *testing.T) {
+func TestLinkAddDelNetkitWithHeadroom(t *testing.T) {
+	minKernelRequired(t, 6, 14)
 	tearDown := setUpNetlinkTest(t)
 	defer tearDown()
+
+	netkit := &Netkit{
+		LinkAttrs: LinkAttrs{
+			Name:         "foo",
+			HardwareAddr: net.HardwareAddr{0x00, 0x11, 0x22, 0x33, 0x44, 0x55},
+		},
+		Mode:       NETKIT_MODE_L2,
+		Policy:     NETKIT_POLICY_FORWARD,
+		PeerPolicy: NETKIT_POLICY_BLACKHOLE,
+		Scrub:      NETKIT_SCRUB_DEFAULT,
+		PeerScrub:  NETKIT_SCRUB_NONE,
+		Headroom:   testHeadroom,
+	}
+	peerAttr := &LinkAttrs{
+		Name:         "bar",
+		HardwareAddr: net.HardwareAddr{0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB},
+	}
+	netkit.SetPeerAttrs(peerAttr)
+	testLinkAddDel(t, netkit)
+}
+
+func TestLinkAddDelNetkitWithTailroom(t *testing.T) {
+	minKernelRequired(t, 6, 14)
+	tearDown := setUpNetlinkTest(t)
+	defer tearDown()
+
+	netkit := &Netkit{
+		LinkAttrs: LinkAttrs{
+			Name:         "foo",
+			HardwareAddr: net.HardwareAddr{0x00, 0x11, 0x22, 0x33, 0x44, 0x55},
+		},
+		Mode:       NETKIT_MODE_L2,
+		Policy:     NETKIT_POLICY_FORWARD,
+		PeerPolicy: NETKIT_POLICY_BLACKHOLE,
+		Scrub:      NETKIT_SCRUB_DEFAULT,
+		PeerScrub:  NETKIT_SCRUB_NONE,
+		Tailroom:   testTailroom,
+	}
+	peerAttr := &LinkAttrs{
+		Name:         "bar",
+		HardwareAddr: net.HardwareAddr{0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB},
+	}
+	netkit.SetPeerAttrs(peerAttr)
+	testLinkAddDel(t, netkit)
+}
+
+func TestLinkAddDelNetkitWithHeadAndTailroom(t *testing.T) {
+	minKernelRequired(t, 6, 14)
+	tearDown := setUpNetlinkTest(t)
+	defer tearDown()
+
+	netkit := &Netkit{
+		LinkAttrs: LinkAttrs{
+			Name:         "foo",
+			HardwareAddr: net.HardwareAddr{0x00, 0x11, 0x22, 0x33, 0x44, 0x55},
+		},
+		Mode:       NETKIT_MODE_L2,
+		Policy:     NETKIT_POLICY_FORWARD,
+		PeerPolicy: NETKIT_POLICY_BLACKHOLE,
+		Scrub:      NETKIT_SCRUB_DEFAULT,
+		PeerScrub:  NETKIT_SCRUB_NONE,
+		Headroom:   testHeadroom,
+		Tailroom:   testTailroom,
+	}
+	peerAttr := &LinkAttrs{
+		Name:         "bar",
+		HardwareAddr: net.HardwareAddr{0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB},
+	}
+	netkit.SetPeerAttrs(peerAttr)
+	testLinkAddDel(t, netkit)
+}
+
+func TestLinkAddDelVeth(t *testing.T) {
+	t.Cleanup(setUpNetlinkTest(t))
 
 	peerMAC, _ := net.ParseMAC("00:12:34:56:78:02")
 
@@ -1305,8 +1372,7 @@ func TestLinkAddDelVeth(t *testing.T) {
 func TestLinkAddDelBond(t *testing.T) {
 	minKernelRequired(t, 3, 13)
 
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	modes := []string{"802.3ad", "balance-tlb"}
 	for _, mode := range modes {
@@ -1328,8 +1394,7 @@ func TestLinkAddDelBond(t *testing.T) {
 }
 
 func TestLinkAddVethWithDefaultTxQLen(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 	la := NewLinkAttrs()
 	la.Name = "foo"
 
@@ -1363,8 +1428,7 @@ func TestLinkAddVethWithDefaultTxQLen(t *testing.T) {
 }
 
 func TestLinkAddVethWithZeroTxQLen(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 	la := NewLinkAttrs()
 	la.Name = "foo"
 	la.TxQLen = 0
@@ -1399,8 +1463,7 @@ func TestLinkAddVethWithZeroTxQLen(t *testing.T) {
 }
 
 func TestLinkAddVethWithPeerAttrs(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 	la := NewLinkAttrs()
 	la.Name = "foo"
 	la.MTU = 1500
@@ -1460,8 +1523,7 @@ func TestLinkAddVethWithPeerAttrs(t *testing.T) {
 }
 
 func TestLinkAddVethWithoutPeerAttrs(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 	la := NewLinkAttrs()
 	la.Name = "foo"
 	la.MTU = 1500
@@ -1522,8 +1584,7 @@ func TestLinkAddDelDummyWithGSO(t *testing.T) {
 		gsoMaxSize = 1 << 14
 	)
 	minKernelRequired(t, 4, 16)
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	dummy := &Dummy{LinkAttrs: LinkAttrs{Name: "foo", GSOMaxSize: gsoMaxSize, GSOMaxSegs: gsoMaxSegs}}
 	if err := LinkAdd(dummy); err != nil {
@@ -1551,8 +1612,7 @@ func TestLinkAddDelDummyWithGRO(t *testing.T) {
 		groMaxSize = 1 << 14
 	)
 	minKernelRequired(t, 5, 19)
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	dummy := &Dummy{LinkAttrs: LinkAttrs{Name: "foo", GROMaxSize: groMaxSize}}
 	if err := LinkAdd(dummy); err != nil {
@@ -1573,8 +1633,7 @@ func TestLinkAddDelDummyWithGRO(t *testing.T) {
 }
 
 func TestLinkAddDummyWithTxQLen(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 	la := NewLinkAttrs()
 	la.Name = "foo"
 	la.TxQLen = 1500
@@ -1597,8 +1656,7 @@ func TestLinkAddDummyWithTxQLen(t *testing.T) {
 }
 
 func TestLinkAddDelBridgeMaster(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	master := &Bridge{LinkAttrs: LinkAttrs{Name: "foo"}}
 	if err := LinkAdd(master); err != nil {
@@ -1667,8 +1725,7 @@ func testLinkSetUnsetResetMaster(t *testing.T, master, newmaster Link) {
 }
 
 func TestLinkSetUnsetResetMaster(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	master := &Bridge{LinkAttrs: LinkAttrs{Name: "foo"}}
 	if err := LinkAdd(master); err != nil {
@@ -1692,8 +1749,7 @@ func TestLinkSetUnsetResetMaster(t *testing.T) {
 }
 
 func TestLinkSetUnsetResetMasterBond(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	master := NewLinkBond(LinkAttrs{Name: "foo"})
 	master.Mode = BOND_MODE_BALANCE_RR
@@ -1719,8 +1775,7 @@ func TestLinkSetUnsetResetMasterBond(t *testing.T) {
 }
 
 func TestLinkSetNs(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	basens, err := netns.Get()
 	if err != nil {
@@ -1783,15 +1838,13 @@ func TestLinkSetNs(t *testing.T) {
 func TestLinkAddDelWireguard(t *testing.T) {
 	minKernelRequired(t, 5, 6)
 
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	testLinkAddDel(t, &Wireguard{LinkAttrs: LinkAttrs{Name: "wg0"}})
 }
 
 func TestVethPeerNs(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	basens, err := netns.Get()
 	if err != nil {
@@ -1837,8 +1890,7 @@ func TestVethPeerNs(t *testing.T) {
 }
 
 func TestVethPeerNs2(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	basens, err := netns.Get()
 	if err != nil {
@@ -1895,8 +1947,7 @@ func TestVethPeerNs2(t *testing.T) {
 }
 
 func TestLinkAddDelVxlan(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	parent := &Dummy{
 		LinkAttrs{Name: "foo"},
@@ -1924,8 +1975,7 @@ func TestLinkAddDelVxlan(t *testing.T) {
 
 func TestLinkAddDelVxlanUdpCSum6(t *testing.T) {
 	minKernelRequired(t, 3, 16)
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	parent := &Dummy{
 		LinkAttrs{Name: "foo"},
@@ -1956,8 +2006,7 @@ func TestLinkAddDelVxlanUdpCSum6(t *testing.T) {
 func TestLinkAddDelVxlanGbp(t *testing.T) {
 	minKernelRequired(t, 4, 0)
 
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	parent := &Dummy{
 		LinkAttrs{Name: "foo"},
@@ -1989,8 +2038,7 @@ func TestLinkAddDelVxlanGbp(t *testing.T) {
 func TestLinkAddDelVxlanFlowBased(t *testing.T) {
 	minKernelRequired(t, 4, 3)
 
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	vxlan := Vxlan{
 		LinkAttrs: LinkAttrs{
@@ -2005,9 +2053,8 @@ func TestLinkAddDelVxlanFlowBased(t *testing.T) {
 
 func TestLinkAddDelBareUDP(t *testing.T) {
 	minKernelRequired(t, 5, 1)
-	setUpNetlinkTestWithKModule(t, "bareudp")
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTestWithKModule(t, "bareudp"))
+	t.Cleanup(setUpNetlinkTest(t))
 
 	testLinkAddDel(t, &BareUDP{
 		LinkAttrs:  LinkAttrs{Name: "foo99"},
@@ -2032,9 +2079,9 @@ func TestBareUDPCompareToIP(t *testing.T) {
 	}
 	// requires iproute2 >= 5.10
 	minKernelRequired(t, 5, 9)
-	setUpNetlinkTestWithKModule(t, "bareudp")
+	t.Cleanup(setUpNetlinkTestWithKModule(t, "bareudp"))
 	ns, tearDown := setUpNamedNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(tearDown)
 
 	expected := &BareUDP{
 		Port:       uint16(6635),
@@ -2073,8 +2120,7 @@ func TestBareUDPCompareToIP(t *testing.T) {
 
 func TestLinkAddDelIPVlanL2(t *testing.T) {
 	minKernelRequired(t, 4, 2)
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 	parent := &Dummy{LinkAttrs{Name: "foo"}}
 	if err := LinkAdd(parent); err != nil {
 		t.Fatal(err)
@@ -2093,8 +2139,7 @@ func TestLinkAddDelIPVlanL2(t *testing.T) {
 
 func TestLinkAddDelIPVlanL3(t *testing.T) {
 	minKernelRequired(t, 4, 2)
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 	parent := &Dummy{LinkAttrs{Name: "foo"}}
 	if err := LinkAdd(parent); err != nil {
 		t.Fatal(err)
@@ -2113,8 +2158,7 @@ func TestLinkAddDelIPVlanL3(t *testing.T) {
 
 func TestLinkAddDelIPVlanVepa(t *testing.T) {
 	minKernelRequired(t, 4, 15)
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 	parent := &Dummy{LinkAttrs{Name: "foo"}}
 	if err := LinkAdd(parent); err != nil {
 		t.Fatal(err)
@@ -2133,8 +2177,7 @@ func TestLinkAddDelIPVlanVepa(t *testing.T) {
 }
 
 func TestLinkAddDelIPVlanNoParent(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	ipv := IPVlan{
 		LinkAttrs: LinkAttrs{
@@ -2152,8 +2195,7 @@ func TestLinkAddDelIPVlanNoParent(t *testing.T) {
 }
 
 func TestLinkByIndex(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	dummy := &Dummy{LinkAttrs{Name: "dummy"}}
 	if err := LinkAdd(dummy); err != nil {
@@ -2179,8 +2221,7 @@ func TestLinkByIndex(t *testing.T) {
 }
 
 func TestLinkSet(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	iface := &Dummy{LinkAttrs{Name: "foo"}}
 	if err := LinkAdd(iface); err != nil {
@@ -2284,8 +2325,7 @@ func TestLinkSet(t *testing.T) {
 }
 
 func TestLinkAltName(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	iface := &Dummy{LinkAttrs{Name: "bar"}}
 	if err := LinkAdd(iface); err != nil {
@@ -2350,8 +2390,7 @@ func TestLinkAltName(t *testing.T) {
 }
 
 func TestLinkSetARP(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	iface := &Veth{LinkAttrs: LinkAttrs{Name: "foo", TxQLen: testTxQLen, MTU: 1500}, PeerName: "banana"}
 	if err := LinkAdd(iface); err != nil {
@@ -2407,8 +2446,7 @@ func expectLinkUpdate(ch <-chan LinkUpdate, ifaceName string, up bool) bool {
 }
 
 func TestLinkSubscribe(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	ch := make(chan LinkUpdate)
 	done := make(chan struct{})
@@ -2444,8 +2482,7 @@ func TestLinkSubscribe(t *testing.T) {
 }
 
 func TestLinkSubscribeWithOptions(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	ch := make(chan LinkUpdate)
 	done := make(chan struct{})
@@ -2578,7 +2615,7 @@ func TestLinkSubscribeListExisting(t *testing.T) {
 }
 
 func TestLinkStats(t *testing.T) {
-	defer setUpNetlinkTest(t)()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	// Create a veth pair and verify the cross-stats once both
 	// ends are brought up and some ICMPv6 packets are exchanged
@@ -2657,8 +2694,7 @@ func TestLinkXdp(t *testing.T) {
 
 func TestLinkAddDelIptun(t *testing.T) {
 	minKernelRequired(t, 4, 9)
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	testLinkAddDel(t, &Iptun{
 		LinkAttrs: LinkAttrs{Name: "iptunfoo"},
@@ -2669,8 +2705,7 @@ func TestLinkAddDelIptun(t *testing.T) {
 
 func TestLinkAddDelIptunFlowBased(t *testing.T) {
 	minKernelRequired(t, 4, 9)
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	testLinkAddDel(t, &Iptun{
 		LinkAttrs: LinkAttrs{Name: "iptunflowfoo"},
@@ -2679,8 +2714,7 @@ func TestLinkAddDelIptunFlowBased(t *testing.T) {
 }
 
 func TestLinkAddDelIp6tnl(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	testLinkAddDel(t, &Ip6tnl{
 		LinkAttrs: LinkAttrs{Name: "ip6tnltest"},
@@ -2690,8 +2724,7 @@ func TestLinkAddDelIp6tnl(t *testing.T) {
 }
 
 func TestLinkAddDelIp6tnlFlowbased(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	testLinkAddDel(t, &Ip6tnl{
 		LinkAttrs: LinkAttrs{Name: "ip6tnltest"},
@@ -2700,8 +2733,7 @@ func TestLinkAddDelIp6tnlFlowbased(t *testing.T) {
 }
 
 func TestLinkAddDelSittun(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	testLinkAddDel(t, &Sittun{
 		LinkAttrs: LinkAttrs{Name: "sittunfoo"},
@@ -2711,8 +2743,7 @@ func TestLinkAddDelSittun(t *testing.T) {
 }
 
 func TestLinkAddDelVti(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	testLinkAddDel(t, &Vti{
 		LinkAttrs: LinkAttrs{Name: "vtifoo"},
@@ -2731,8 +2762,7 @@ func TestLinkAddDelVti(t *testing.T) {
 
 func TestLinkSetGSOMaxSize(t *testing.T) {
 	minKernelRequired(t, 5, 19)
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	iface := &Veth{LinkAttrs: LinkAttrs{Name: "foo", TxQLen: testTxQLen, MTU: 1500}, PeerName: "bar"}
 	if err := LinkAdd(iface); err != nil {
@@ -2761,8 +2791,7 @@ func TestLinkSetGSOMaxSize(t *testing.T) {
 
 func TestLinkSetGSOMaxSegs(t *testing.T) {
 	minKernelRequired(t, 5, 19)
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	iface := &Veth{LinkAttrs: LinkAttrs{Name: "foo", TxQLen: testTxQLen, MTU: 1500}, PeerName: "bar"}
 	if err := LinkAdd(iface); err != nil {
@@ -2791,8 +2820,7 @@ func TestLinkSetGSOMaxSegs(t *testing.T) {
 
 func TestLinkSetGROMaxSize(t *testing.T) {
 	minKernelRequired(t, 5, 19)
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	iface := &Veth{LinkAttrs: LinkAttrs{Name: "foo", TxQLen: testTxQLen, MTU: 1500}, PeerName: "bar"}
 	if err := LinkAdd(iface); err != nil {
@@ -2821,8 +2849,7 @@ func TestLinkSetGROMaxSize(t *testing.T) {
 
 func TestLinkGetTSOMax(t *testing.T) {
 	minKernelRequired(t, 5, 19)
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	iface := &Veth{LinkAttrs: LinkAttrs{Name: "foo", TxQLen: testTxQLen, MTU: 1500}, PeerName: "bar"}
 	if err := LinkAdd(iface); err != nil {
@@ -2841,8 +2868,7 @@ func TestLinkGetTSOMax(t *testing.T) {
 
 func TestLinkSetGSOIPv4MaxSize(t *testing.T) {
 	minKernelRequired(t, 6, 3)
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	iface := &Veth{LinkAttrs: LinkAttrs{Name: "foo", TxQLen: testTxQLen, MTU: 1500}, PeerName: "bar"}
 	if err := LinkAdd(iface); err != nil {
@@ -2871,8 +2897,7 @@ func TestLinkSetGSOIPv4MaxSize(t *testing.T) {
 
 func TestLinkSetGROIPv4MaxSize(t *testing.T) {
 	minKernelRequired(t, 6, 3)
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	iface := &Veth{LinkAttrs: LinkAttrs{Name: "foo", TxQLen: testTxQLen, MTU: 1500}, PeerName: "bar"}
 	if err := LinkAdd(iface); err != nil {
@@ -2902,8 +2927,7 @@ func TestLinkSetGROIPv4MaxSize(t *testing.T) {
 func TestBridgeCreationWithMulticastSnooping(t *testing.T) {
 	minKernelRequired(t, 4, 4)
 
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	bridgeWithDefaultMcastSnoopName := "foo"
 	bridgeWithDefaultMcastSnoop := &Bridge{LinkAttrs: LinkAttrs{Name: bridgeWithDefaultMcastSnoopName}}
@@ -2941,8 +2965,7 @@ func TestBridgeCreationWithMulticastSnooping(t *testing.T) {
 func TestBridgeSetMcastSnoop(t *testing.T) {
 	minKernelRequired(t, 4, 4)
 
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	bridgeName := "foo"
 	bridge := &Bridge{LinkAttrs: LinkAttrs{Name: bridgeName}}
@@ -2980,8 +3003,7 @@ func expectMcastSnooping(t *testing.T, linkName string, expected bool) {
 func TestBridgeSetVlanFiltering(t *testing.T) {
 	minKernelRequired(t, 4, 4)
 
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	bridgeName := "foo"
 	bridge := &Bridge{LinkAttrs: LinkAttrs{Name: bridgeName}}
@@ -3008,8 +3030,7 @@ func TestBridgeSetVlanFiltering(t *testing.T) {
 func TestBridgeDefaultPVID(t *testing.T) {
 	minKernelRequired(t, 4, 4)
 
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	bridgeName := "foo"
 	bridge := &Bridge{LinkAttrs: LinkAttrs{Name: bridgeName}}
@@ -3058,8 +3079,7 @@ func expectVlanDefaultPVID(t *testing.T, linkName string, expected uint16) {
 func TestBridgeCreationWithAgeingTime(t *testing.T) {
 	minKernelRequired(t, 3, 18)
 
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	bridgeWithSpecifiedAgeingTimeName := "foo"
 	ageingTime := uint32(20000)
@@ -3104,8 +3124,7 @@ func TestBridgeCreationWithAgeingTime(t *testing.T) {
 func TestBridgeCreationWithHelloTime(t *testing.T) {
 	minKernelRequired(t, 3, 18)
 
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	bridgeWithSpecifiedHelloTimeName := "foo"
 	helloTime := uint32(300)
@@ -3150,8 +3169,7 @@ func TestBridgeCreationWithHelloTime(t *testing.T) {
 func TestBridgeCreationWithVlanFiltering(t *testing.T) {
 	minKernelRequired(t, 3, 18)
 
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	bridgeWithVlanFilteringEnabledName := "foo"
 	vlanFiltering := true
@@ -3194,8 +3212,7 @@ func TestBridgeCreationWithVlanFiltering(t *testing.T) {
 }
 
 func TestLinkSubscribeWithProtinfo(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	master := &Bridge{LinkAttrs: LinkAttrs{Name: "foo"}}
 	if err := LinkAdd(master); err != nil {
@@ -3272,15 +3289,14 @@ func testGTPLink(t *testing.T) *GTP {
 }
 
 func TestLinkAddDelGTP(t *testing.T) {
-	tearDown := setUpNetlinkTestWithKModule(t, "gtp")
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTestWithKModule(t, "gtp"))
 	gtp := testGTPLink(t)
 	testLinkAddDel(t, gtp)
 }
 
 func TestLinkAddDelXfrmi(t *testing.T) {
 	minKernelRequired(t, 4, 19)
-	defer setUpNetlinkTest(t)()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	lo, _ := LinkByName("lo")
 
@@ -3291,7 +3307,7 @@ func TestLinkAddDelXfrmi(t *testing.T) {
 
 func TestLinkAddDelXfrmiNoId(t *testing.T) {
 	minKernelRequired(t, 4, 19)
-	defer setUpNetlinkTest(t)()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	lo, _ := LinkByName("lo")
 
@@ -3328,8 +3344,7 @@ func TestLinkByAliasWhenLinkIsNotFound(t *testing.T) {
 }
 
 func TestLinkAddDelTuntap(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	// Mount sysfs so that sysfs gets the namespace tag of the current network namespace
 	// This is necessary so that /sys shows the network interfaces of the current namespace.
@@ -3349,8 +3364,7 @@ func TestLinkAddDelTuntap(t *testing.T) {
 }
 
 func TestLinkAddDelTuntapMq(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	if err := syscall.Mount("sysfs", "/sys", "sysfs", syscall.MS_RDONLY, ""); err != nil {
 		t.Fatal("Cannot mount sysfs")
@@ -3382,8 +3396,7 @@ func TestLinkAddDelTuntapMq(t *testing.T) {
 }
 
 func TestTuntapPartialQueues(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	if err := syscall.Mount("sysfs", "/sys", "sysfs", syscall.MS_RDONLY, ""); err != nil {
 		t.Fatal("Cannot mount sysfs")
@@ -3440,8 +3453,7 @@ func TestTuntapPartialQueues(t *testing.T) {
 }
 
 func TestLinkAddDelTuntapOwnerGroup(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	if err := syscall.Mount("sysfs", "/sys", "sysfs", syscall.MS_RDONLY, ""); err != nil {
 		t.Fatal("Cannot mount sysfs")
@@ -3462,8 +3474,7 @@ func TestLinkAddDelTuntapOwnerGroup(t *testing.T) {
 }
 
 func TestVethPeerIndex(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	const (
 		vethPeer1 = "vethOne"
@@ -3515,8 +3526,7 @@ func TestVethPeerIndex(t *testing.T) {
 func TestLinkSlaveBond(t *testing.T) {
 	minKernelRequired(t, 3, 13)
 
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	const (
 		bondName  = "foo"
@@ -3558,8 +3568,7 @@ func TestLinkSlaveBond(t *testing.T) {
 func TestLinkSetBondSlaveQueueId(t *testing.T) {
 	minKernelRequired(t, 3, 13)
 
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	const (
 		bondName   = "foo"
@@ -3590,8 +3599,7 @@ func TestLinkSetBondSlaveQueueId(t *testing.T) {
 func TestLinkSetBondSlave(t *testing.T) {
 	minKernelRequired(t, 3, 13)
 
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	const (
 		bondName     = "foo"
@@ -3693,8 +3701,7 @@ func testFailover(t *testing.T, slaveName, bondName string) {
 func TestLinkFailover(t *testing.T) {
 	minKernelRequired(t, 3, 13)
 
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	const (
 		bondName     = "foo"
@@ -3766,8 +3773,7 @@ func TestLinkFailover(t *testing.T) {
 }
 
 func TestLinkSetAllmulticast(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	iface := &Veth{LinkAttrs: LinkAttrs{Name: "foo"}, PeerName: "bar"}
 	if err := LinkAdd(iface); err != nil {
@@ -3816,8 +3822,7 @@ func TestLinkSetAllmulticast(t *testing.T) {
 }
 
 func TestLinkSetMulticast(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	iface := &Veth{LinkAttrs: LinkAttrs{Name: "foo"}, PeerName: "bar"}
 	if err := LinkAdd(iface); err != nil {
@@ -3866,8 +3871,7 @@ func TestLinkSetMulticast(t *testing.T) {
 }
 
 func TestLinkSetMacvlanMode(t *testing.T) {
-	tearDown := setUpNetlinkTest(t)
-	defer tearDown()
+	t.Cleanup(setUpNetlinkTest(t))
 
 	const (
 		parentName  = "foo"
