@@ -626,6 +626,9 @@ func compareVxlan(t *testing.T, expected, actual *Vxlan) {
 	if actual.FlowBased != expected.FlowBased {
 		t.Fatal("Vxlan.FlowBased doesn't match")
 	}
+	if actual.VniFilter != expected.VniFilter {
+		t.Fatal("Vxlan.VniFilter doesn't match")
+	}
 	if actual.UDP6ZeroCSumTx != expected.UDP6ZeroCSumTx {
 		t.Fatal("Vxlan.UDP6ZeroCSumTx doesn't match")
 	}
@@ -2051,6 +2054,23 @@ func TestLinkAddDelVxlanFlowBased(t *testing.T) {
 	testLinkAddDel(t, &vxlan)
 }
 
+func TestLinkAddDelVxlanVniFilter(t *testing.T) {
+	minKernelRequired(t, 5, 18)
+
+	t.Cleanup(setUpNetlinkTest(t))
+
+	vxlan := Vxlan{
+		LinkAttrs: LinkAttrs{
+			Name: "foo",
+		},
+		Learning:  false,
+		FlowBased: true,
+		VniFilter: true,
+	}
+
+	testLinkAddDel(t, &vxlan)
+}
+
 func TestLinkAddDelBareUDP(t *testing.T) {
 	minKernelRequired(t, 5, 1)
 	t.Cleanup(setUpNetlinkTestWithKModule(t, "bareudp"))
@@ -2217,6 +2237,49 @@ func TestLinkByIndex(t *testing.T) {
 	_, err = LinkByIndex(dummy.Attrs().Index)
 	if err == nil {
 		t.Fatalf("LinkByIndex(%v) found deleted link", err)
+	}
+}
+
+func TestOpenvSwitch(t *testing.T) {
+	skipUnlessRoot(t)
+	skipUnlessKModuleLoaded(t, "openvswitch")
+
+	// This test validates host OVS state, so it must not create an isolated netns
+	// via setUpNetlinkTest(), otherwise host OVS links will be invisible.
+	link, err := LinkByName("ovs-system")
+	if err != nil {
+		if _, ok := err.(LinkNotFoundError); ok {
+			t.Skip("ovs-system interface not found")
+		}
+		t.Fatal("Failed getting link: ", err)
+	}
+
+	ovsSystem, ok := link.(*OpenvSwitch)
+	if !ok {
+		t.Fatalf("unexpected link type: %T", link)
+	}
+
+	links, err := LinkList()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, l := range links {
+		if l.Attrs().Name == ovsSystem.Name {
+			if _, ok := l.(*OpenvSwitch); !ok {
+				t.Fatalf("unexpected link type: %T", l)
+			}
+		}
+
+		if l.Attrs().Slave != nil && l.Attrs().Slave.SlaveType() == "openvswitch" {
+			if _, ok := l.Attrs().Slave.(*OpenvSwitchSlave); !ok {
+				t.Fatalf("unexpected slave type: %T", l.Attrs().Slave)
+			}
+
+			if l.Attrs().MasterIndex != ovsSystem.Index {
+				t.Fatalf("Got unexpected master index: %d, expected: %d", l.Attrs().MasterIndex, ovsSystem.Index)
+			}
+		}
 	}
 }
 
