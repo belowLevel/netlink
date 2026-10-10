@@ -596,17 +596,19 @@ func parseIPSetEntry(data []byte) (entry IPSetEntry) {
 			entry.Comment = nl.BytesToString(attr.Value)
 		case nl.IPSET_ATTR_IP | nl.NLA_F_NESTED:
 			for attr := range nl.ParseAttributes(attr.Value) {
-				switch attr.Type {
-				case nl.IPSET_ATTR_IPADDR_IPV4, nl.IPSET_ATTR_IPADDR_IPV6:
-					entry.IP = net.IP(attr.Value)
-				}
+				//switch attr.Type {
+				//case nl.IPSET_ATTR_IPADDR_IPV4, nl.IPSET_ATTR_IPADDR_IPV6:
+				//	entry.IP = net.IP(attr.Value)
+				//}
+				entry.IP = net.IP(attr.Value)
 			}
 		case nl.IPSET_ATTR_IP2 | nl.NLA_F_NESTED:
 			for attr := range nl.ParseAttributes(attr.Value) {
-				switch attr.Type {
-				case nl.IPSET_ATTR_IPADDR_IPV4, nl.IPSET_ATTR_IPADDR_IPV6:
-					entry.IP2 = net.IP(attr.Value)
-				}
+				//switch attr.Type {
+				//case nl.IPSET_ATTR_IPADDR_IPV4, nl.IPSET_ATTR_IPADDR_IPV6:
+				//	entry.IP2 = net.IP(attr.Value)
+				//}
+				entry.IP = net.IP(attr.Value)
 			}
 		case nl.IPSET_ATTR_CIDR:
 			entry.CIDR = attr.Value[0]
